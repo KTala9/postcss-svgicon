@@ -1,8 +1,8 @@
-# Postcss SVGIcon
+# PostCSS SVGIcon
 
 ## Colour and access SVG files easily in css.
 
-This Postcss plugin does three things:
+This PostCSS plugin does three things:
 
 * Lets you define a directory of svgs as your icons folder.
 * Lets you easily access and color these svgs in your css.
@@ -13,9 +13,9 @@ It's a simple but effective icon system which required minimal config and mainte
 ### Postcss options
 
 * **path**: Path to a directory containing your svg files.
-* **prefix**: *(optional)* The prefix for your icon files, if any. Including this option allows you to reference your icons without the prefix. For example, *icon_tick.svg* would be referenced in your css as simply *tick*.
+* **prefix**: *(optional)* If your icon files share a common prefix, you can register it here. This allows you to reference your icons without the prefix. For example, *icon_tick.svg* can be referenced in your css simply as *tick*.
 
-#### Example
+#### Example config
 
 ```js
 require('postcss-svgicon')({
@@ -26,12 +26,13 @@ require('postcss-svgicon')({
 
 ### CSS helper function
 
-In your css, you can now include and colour an icon using the ```svgicon(iconName, iconColour)``` function. *iconName* is simply the filename you wan to use, without the (configured) prefix or the extension.
+In your css, you can now include and colour any icon form the registered directory using the ```svgicon(iconName, iconColour)``` function. *iconName* is simply the name of the svg file you wish to use, without the (optionally configured) prefix or the extension.
 
 #### Example
 
 ```css
 .my-icon {
 	background-image: svgicon(tick, green);
+	background-repeat: no-repeat;
 }
 ```
