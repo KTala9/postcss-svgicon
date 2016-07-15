@@ -26,7 +26,7 @@ require('postcss-svgicon')({
 
 ### CSS helper function
 
-In your css, you can now include and colour an icon using the '''svgicon(iconName, iconColour)''' function. *iconName* is simply the filename you wan to use, without the (configured) prefix or the extension.
+In your css, you can now include and colour an icon using the ```svgicon(iconName, iconColour)``` function. *iconName* is simply the filename you wan to use, without the (configured) prefix or the extension.
 
 #### Example
 
