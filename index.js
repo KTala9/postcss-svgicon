@@ -70,9 +70,12 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 			xml2js(xml, function(err, parsedData) {
 				traverse(parsedData).forEach(function (value) {
 					if (this.key === 'path') {
-						var newValue = value;
-
-						newValue[0]['$'].fill = iconColor;
+						var newValue = value,
+							i;
+							
+						for (i = 0; i < newValue.length; i++) {
+							newValue[i]['$'].fill = iconColor;
+						}
 
 						this.update(newValue);
 
