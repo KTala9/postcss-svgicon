@@ -1,3 +1,5 @@
+'use strict';
+
 var path = require('path');
 var fs = require('fs');
 var util = require('util');
@@ -18,7 +20,6 @@ var xml2js = xml2jsModule.parseString;
 var js2xml = new xml2jsModule.Builder();
 
 module.exports = postcss.plugin('postcss-svgicon', function(options) {
-
 	options = options || {};
 
 	var funcName = 'svgicon';
@@ -32,12 +33,14 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 
 		var iconCache = {};
 
-		function saveIconToCache(name, color, code, selector) {
-			iconCache[name + color] = iconCache[name + color] || {};
-			iconCache[name + color].instances = iconCache[name + color].instances || [];
+		function saveIconToCache(name, color, code, selector, mediaRule) {
+			var cacheKey = name + color + mediaRule;
 
-			iconCache[name + color].code = code;
-			iconCache[name + color].instances.push(selector);
+			iconCache[cacheKey] = iconCache[cacheKey] || {};
+			iconCache[cacheKey].instances = iconCache[cacheKey].instances || [];
+			iconCache[cacheKey].code = code;
+			iconCache[cacheKey].instances.push(selector);
+			iconCache[cacheKey].mediaRule = mediaRule;
 		}
 
 		function isIconAlreadyCached(name, color) {
@@ -47,6 +50,19 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 		css.walkDecls(function (decl) {
 			if (decl.value.indexOf(funcName) === -1) {
 				return;
+			}
+
+			var thisDec = decl,
+				mediaRule = '__NOMEDIA__';
+
+			// Detect if we're in a media query by traversing ancestors in the tree
+			while(thisDec.parent) {
+				thisDec = thisDec.parent;
+
+				if (thisDec.type === 'atrule' && thisDec.name === 'media') {
+					mediaRule = thisDec.params;
+					//console.log(thisDec.params, decl.value);
+				}
 			}
 
 			var delcOptions = decl.value
@@ -100,16 +116,19 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 		
 				//decl.value = newProperty;
 
-				saveIconToCache(iconName, iconColor, newProperty, decl.parent.selector);
+				saveIconToCache(iconName, iconColor, newProperty, decl.parent.selector, mediaRule);
 
 				decl.remove();
 			});
 		});
 
+		// (1) Add all the rules without media queries to the end of the stylesheet.
 		_.forEach(iconCache, function(icon) {
+			if (icon.mediaRule !== '__NOMEDIA__') { return; }
+
 			var rule = postcss.rule({
-				selector: icon.instances.join(', ')
-			});
+					selector: icon.instances.join(', ')
+				});
 
 			rule.append(postcss.decl({
 				prop: 'background-image',
@@ -117,7 +136,29 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 			}));
 
 			css.append(rule);
-		}); 
-	}
+		});
+
+		// (2) Add all the rules without media queries to the end of the stylesheet.
+		// These will appear after rule set (1).
+		_.forEach(iconCache, function(icon, key) {
+			if (icon.mediaRule === '__NOMEDIA__') { return; }
+
+			var atRule = postcss.atRule({
+					name: 'media',
+					params: icon.mediaRule
+				}),
+				rule = postcss.rule({
+					selector: icon.instances.join(', ')
+				});
+
+			rule.append(postcss.decl({
+				prop: 'background-image',
+				value: icon.code
+			}));
+
+			css.append(atRule);
+			atRule.append(rule);
+		});
+	};
  
 });
