@@ -28,7 +28,7 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 	var svgRegex = new RegExp('svgicon\\([\"|\'](.*)[\"|\']\\)');
 
 	return function(css, result) {
-		
+
 		var sourceDir = path.resolve(options.path);
 
 		var iconCache = {};
@@ -82,13 +82,14 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 			var xml = fs.readFileSync(filepath, 'utf8').toString();
 			var newSvg;
 			var newProperty;
+			var elTypesToColor = ['path', 'polygon'];
 
 			xml2js(xml, function(err, parsedData) {
 				traverse(parsedData).forEach(function (value) {
-					if (this.key === 'path') {
+					if (elTypesToColor.indexOf(this.key) !== -1) {
 						var newValue = value,
 							i;
-							
+
 						for (i = 0; i < newValue.length; i++) {
 							newValue[i]['$'].fill = iconColor;
 						}
@@ -110,10 +111,10 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 
 				//newSvg = strictUriEncode(newSvg);
 				newProperty = 'url(\'data:image/svg+xml,' + newSvg + '\')';
-				
+
 				// newSvg = base64.encode(newSvg);
 				// newProperty = 'url("data:image/svg+xml;base64,' + newSvg + '")';
-		
+
 				//decl.value = newProperty;
 
 				saveIconToCache(iconName, iconColor, newProperty, decl.parent.selector, mediaRule);
@@ -160,5 +161,5 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 			atRule.append(rule);
 		});
 	};
- 
+
 });
