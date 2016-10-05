@@ -1,6 +1,6 @@
 'use strict';
 
-// ==== Dependancies ============================================
+// ==== Dependencies ============================================
 
 const path = require('path'),
 	fs = require('fs'),
@@ -13,7 +13,20 @@ const path = require('path'),
 	// XML-to-JSON Converters
 	xml2jsModule = require('xml2js'),
 	xml2js = xml2jsModule.parseString,
-	js2xml = new xml2jsModule.Builder();
+	js2xml = new xml2jsModule.Builder(),
+
+
+// ==== CONSTANTS ============================================
+
+	DEFAULT_OPTIONS = {
+		path: './svgs',
+		prefix: '',
+		functionName: 'svgicon'
+	},
+
+	CONFIG = {
+		PATH_TYPES: ['path', 'polygon']
+	};
 
 // ==== Icon Cache ============================================
 
@@ -22,17 +35,17 @@ class IconCache {
 		this.cache = {};
 	}
 
-	add(name, color, code, selector, mediaRule) {
-		const key = name + color + mediaRule;
+	add(name, color, code, selector, media) {
+		const key = name + color + media;
 		this.cache[key] = this.cache[key] || {};
 		this.cache[key].instances = this.cache[key].instances || [];
 		this.cache[key].code = code;
 		this.cache[key].instances.push(selector);
-		this.cache[key].mediaRule = mediaRule;
+		this.cache[key].media = media;
 	}
 
-	has(name, color, mediaRule) {
-		return _.includes(this.cache, name + color + mediaRule);
+	has(name, color, media) {
+		return _.includes(this.cache, name + color + media);
 	}
 }
 
@@ -77,12 +90,6 @@ function getDelcOptions(decl) {
 	}
 }
 
-var DEFAULT_OPTIONS = {
-	path: './svgs',
-	prefix: '',
-	functionName: 'svgicon'
-};
-
 // ==== Plugin ============================================
 
 module.exports = postcss.plugin('postcss-svgicon', function(options) {
@@ -90,14 +97,14 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 	options = Object.assign({}, DEFAULT_OPTIONS, options);
 
 	return function(css) {
-		var sourceDir = path.resolve(options.path),
+		let sourceDir = path.resolve(options.path),
 			iconCache = new IconCache();
 
 		css.walkDecls(function (decl) {
 			let icon,
 				filepath,
 				xml,
-				elTypesToColor = ['path', 'polygon'];;
+				parent = decl.parent;
 
 			// Only consider rules which contain the options.functionName
 			if (decl.value.includes(options.functionName) === false) { return; }
@@ -105,10 +112,9 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 			icon = getDelcOptions(decl);
 			icon.media = getMediaRule(decl);
 
-			// TODO: Check that this makes sense
 			if (iconCache.has(icon.name, icon.color, icon.media)) { return; }
 
-			filepath = sourceDir + '/' + options.prefix + icon.name + '.svg';
+			filepath = `${sourceDir}/${options.prefix}${icon.name}.svg`;
 			xml = fs.readFileSync(filepath, 'utf8').toString();
 
 			xml2js(xml, function(err, parsedData) {
@@ -116,8 +122,8 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 					newProperty;
 
 				traverse(parsedData).forEach(function (value) {
-					if (elTypesToColor.indexOf(this.key) !== -1) {
-						var newValue = value,
+					if (CONFIG.PATH_TYPES.indexOf(this.key) !== -1) {
+						let newValue = value,
 							len = newValue.length;
 
 						for (let i = 0; i < len; i++) {
@@ -138,7 +144,7 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 				// Remove style tage in svg code.
 				newSvg = newSvg.replace(/\<style.*style\>/, '');
 
-				newProperty = 'url(\'data:image/svg+xml,' + newSvg + '\')';
+				newProperty = `url('data:image/svg+xml,${newSvg}')`;
 
 				iconCache.add(
 					icon.name,
@@ -149,16 +155,24 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 				);
 
 				decl.remove();
+
+				// If the selector ends up empty, remove it.
+				if (parent.nodes.length === 0) {
+					parent.remove();
+				}
 			});
 		});
 
 		// (1) Add all the rules without media queries to the end of the stylesheet.
-		_.forEach(iconCache.cache, function(icon) {
+		for (let key in iconCache.cache) {
+			let icon = iconCache.cache[key],
+				rule;
+
 			if (icon.media !== '__NOMEDIA__') { return; }
 
-			var rule = postcss.rule({
-					selector: icon.instances.join(', ')
-				});
+			rule = postcss.rule({
+				selector: icon.instances.join(', ')
+			});
 
 			rule.append(postcss.decl({
 				prop: 'background-image',
@@ -166,20 +180,25 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 			}));
 
 			css.append(rule);
-		});
+		};
 
 		// (2) Add all the rules without media queries to the end of the stylesheet.
 		// These will appear after rule set (1).
-		_.forEach(iconCache.cache, function(icon, key) {
+		for (let key in iconCache.cache) {
+			let icon = iconCache.cache[key],
+				atRule,
+				rule;
+
 			if (icon.media === '__NOMEDIA__') { return; }
 
-			var atRule = postcss.atRule({
-					name: 'media',
-					params: icon.media
-				}),
-				rule = postcss.rule({
-					selector: icon.instances.join(', ')
-				});
+			atRule = postcss.atRule({
+				name: 'media',
+				params: icon.media
+			});
+
+			rule = postcss.rule({
+				selector: icon.instances.join(', ')
+			});
 
 			rule.append(postcss.decl({
 				prop: 'background-image',
@@ -188,7 +207,7 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 
 			css.append(atRule);
 			atRule.append(rule);
-		});
+		}
 	};
 
 });
