@@ -77,7 +77,9 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 				return;
 			}
 
-			var filepath = sourceDir + '/' + options.prefix + iconName + '.svg';
+			var prefix = options.prefix || '';
+
+			var filepath = sourceDir + '/' + prefix + iconName + '.svg';
 
 			var xml = fs.readFileSync(filepath, 'utf8').toString();
 			var newSvg;
