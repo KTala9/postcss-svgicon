@@ -1,133 +1,160 @@
 'use strict';
 
-var path = require('path');
-var fs = require('fs');
-var util = require('util');
+// ==== Dependancies ============================================
 
-var _ = require('lodash');
+const path = require('path'),
+	fs = require('fs'),
+	_ = require('lodash'),
+	postcss = require('postcss'),
+	traverse = require('traverse'),
+	pd = require('pretty-data').pd,
+	removeNewline = require('newline-remove'),
 
-var postcss = require('postcss');
+	// XML-to-JSON Converters
+	xml2jsModule = require('xml2js'),
+	xml2js = xml2jsModule.parseString,
+	js2xml = new xml2jsModule.Builder();
 
-var xml2jsModule = require('xml2js');
-var traverse = require('traverse');
-var pd = require('pretty-data').pd;
-var removeNewline = require('newline-remove');
-var strictUriEncode = require('strict-uri-encode');
-var base64 = require('base-64');
+// ==== Icon Cache ============================================
 
+class IconCache {
+	constructor() {
+		this.cache = {};
+	}
 
-var xml2js = xml2jsModule.parseString;
-var js2xml = new xml2jsModule.Builder();
+	add(name, color, code, selector, mediaRule) {
+		const key = name + color + mediaRule;
+		this.cache[key] = this.cache[key] || {};
+		this.cache[key].instances = this.cache[key].instances || [];
+		this.cache[key].code = code;
+		this.cache[key].instances.push(selector);
+		this.cache[key].mediaRule = mediaRule;
+	}
+
+	has(name, color, mediaRule) {
+		return _.includes(this.cache, name + color + mediaRule);
+	}
+}
+
+// ==== Helper functions ============================================
+
+/**
+ * Find and return what media rule this declaration is within.
+ *
+ * @param {object} decl The postcss declaration.
+ * @returns {string} The media rule, or '__NOMEDIA__' if there is no media rule.
+ */
+function getMediaRule(decl) {
+	let thisDec = decl,
+		mediaRule = '__NOMEDIA__';
+
+	// Detect if we're in a media query by traversing ancestors in the tree
+	while(thisDec.parent) {
+		thisDec = thisDec.parent;
+
+		if (thisDec.type === 'atrule' && thisDec.name === 'media') {
+			mediaRule = thisDec.params;
+		}
+	}
+
+	return mediaRule;
+}
+
+/**
+ * Extract the name and color options from the svgicon css function.
+ * @param {object} decl The postcss declaration.
+ * @returns {object} An object containing {name, color}
+ */
+function getDelcOptions(decl) {
+	const aParams = decl.value
+		.match(/\((.*)\)/)[1]
+		.replace(' ', '')
+		.split(',');
+
+	return {
+		name: aParams[0],
+		color: aParams[1]
+	}
+}
+
+var DEFAULT_OPTIONS = {
+	path: './svgs',
+	prefix: '',
+	functionName: 'svgicon'
+};
+
+// ==== Plugin ============================================
 
 module.exports = postcss.plugin('postcss-svgicon', function(options) {
-	options = options || {};
+	// Override default options
+	options = Object.assign({}, DEFAULT_OPTIONS, options);
 
-	var funcName = 'svgicon';
-
-	// Regex for extracting the svg
-	var svgRegex = new RegExp('svgicon\\([\"|\'](.*)[\"|\']\\)');
-
-	return function(css, result) {
-
-		var sourceDir = path.resolve(options.path);
-
-		var iconCache = {};
-
-		function saveIconToCache(name, color, code, selector, mediaRule) {
-			var cacheKey = name + color + mediaRule;
-
-			iconCache[cacheKey] = iconCache[cacheKey] || {};
-			iconCache[cacheKey].instances = iconCache[cacheKey].instances || [];
-			iconCache[cacheKey].code = code;
-			iconCache[cacheKey].instances.push(selector);
-			iconCache[cacheKey].mediaRule = mediaRule;
-		}
-
-		function isIconAlreadyCached(name, color) {
-			return _.includes(iconCache, name + color);
-		}
+	return function(css) {
+		var sourceDir = path.resolve(options.path),
+			iconCache = new IconCache();
 
 		css.walkDecls(function (decl) {
-			if (decl.value.indexOf(funcName) === -1) {
-				return;
-			}
+			let icon,
+				filepath,
+				xml,
+				elTypesToColor = ['path', 'polygon'];;
 
-			var thisDec = decl,
-				mediaRule = '__NOMEDIA__';
+			// Only consider rules which contain the options.functionName
+			if (decl.value.includes(options.functionName) === false) { return; }
 
-			// Detect if we're in a media query by traversing ancestors in the tree
-			while(thisDec.parent) {
-				thisDec = thisDec.parent;
+			icon = getDelcOptions(decl);
+			icon.media = getMediaRule(decl);
 
-				if (thisDec.type === 'atrule' && thisDec.name === 'media') {
-					mediaRule = thisDec.params;
-					//console.log(thisDec.params, decl.value);
-				}
-			}
+			// TODO: Check that this makes sense
+			if (iconCache.has(icon.name, icon.color, icon.media)) { return; }
 
-			var delcOptions = decl.value
-								.match(/\((.*)\)/)[1]
-								.replace(' ', '')
-								.split(',');
-
-			var iconName = delcOptions[0];
-			var iconColor = delcOptions[1];
-
-			if (isIconAlreadyCached(iconName, iconColor)) {
-				return;
-			}
-
-			var prefix = options.prefix || '';
-
-			var filepath = sourceDir + '/' + prefix + iconName + '.svg';
-
-			var xml = fs.readFileSync(filepath, 'utf8').toString();
-			var newSvg;
-			var newProperty;
-			var elTypesToColor = ['path', 'polygon'];
+			filepath = sourceDir + '/' + options.prefix + icon.name + '.svg';
+			xml = fs.readFileSync(filepath, 'utf8').toString();
 
 			xml2js(xml, function(err, parsedData) {
+				let newSvg,
+					newProperty;
+
 				traverse(parsedData).forEach(function (value) {
 					if (elTypesToColor.indexOf(this.key) !== -1) {
 						var newValue = value,
-							i;
+							len = newValue.length;
 
-						for (i = 0; i < newValue.length; i++) {
-							newValue[i]['$'].fill = iconColor;
+						for (let i = 0; i < len; i++) {
+							newValue[i]['$'].fill = icon.color;
 						}
 
 						this.update(newValue);
-
-						// if (newValue[0]['$'].class) {
-						// 	console.log(newValue[0]['$'].class);
-						// }
 					}
 				});
 
-				//console.log(util.inspect(parsedData, {showHidden: false, depth: null}));
-
+				// Convert js back to svg
 				newSvg = js2xml.buildObject(parsedData);
+
+				// Clean up svg code
 				newSvg = pd.xmlmin(newSvg);
 				newSvg = removeNewline(newSvg);
+
+				// Remove style tage in svg code.
 				newSvg = newSvg.replace(/\<style.*style\>/, '');
 
-				//newSvg = strictUriEncode(newSvg);
 				newProperty = 'url(\'data:image/svg+xml,' + newSvg + '\')';
 
-				// newSvg = base64.encode(newSvg);
-				// newProperty = 'url("data:image/svg+xml;base64,' + newSvg + '")';
-
-				//decl.value = newProperty;
-
-				saveIconToCache(iconName, iconColor, newProperty, decl.parent.selector, mediaRule);
+				iconCache.add(
+					icon.name,
+					icon.color,
+					newProperty,
+					decl.parent.selector,
+					icon.media
+				);
 
 				decl.remove();
 			});
 		});
 
 		// (1) Add all the rules without media queries to the end of the stylesheet.
-		_.forEach(iconCache, function(icon) {
-			if (icon.mediaRule !== '__NOMEDIA__') { return; }
+		_.forEach(iconCache.cache, function(icon) {
+			if (icon.media !== '__NOMEDIA__') { return; }
 
 			var rule = postcss.rule({
 					selector: icon.instances.join(', ')
@@ -143,12 +170,12 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 
 		// (2) Add all the rules without media queries to the end of the stylesheet.
 		// These will appear after rule set (1).
-		_.forEach(iconCache, function(icon, key) {
-			if (icon.mediaRule === '__NOMEDIA__') { return; }
+		_.forEach(iconCache.cache, function(icon, key) {
+			if (icon.media === '__NOMEDIA__') { return; }
 
 			var atRule = postcss.atRule({
 					name: 'media',
-					params: icon.mediaRule
+					params: icon.media
 				}),
 				rule = postcss.rule({
 					selector: icon.instances.join(', ')
