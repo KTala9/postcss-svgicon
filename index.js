@@ -40,7 +40,7 @@ class IconCache {
 		this.cache[key] = this.cache[key] || {};
 		this.cache[key].instances = this.cache[key].instances || [];
 		this.cache[key].code = code;
-		this.cache[key].instances.push(selector);
+		this.cache[key].instances = this.cache[key].instances.concat(selector.split(','));
 		this.cache[key].media = media;
 	}
 
@@ -90,6 +90,67 @@ function getDelcOptions(decl) {
 	}
 }
 
+/**
+ * Add icons rules to the end of the styleguide, for all icons
+ * without a media query,
+ *
+ * @param {postcss css object} css
+ * @param {IconCache} iconCache
+ */
+function injectIconRulesWithoutMedia(css, iconCache) {
+	for (let key in iconCache.cache) {
+		let icon = iconCache.cache[key],
+			rule;
+
+		if (icon.media !== '__NOMEDIA__') { continue; }
+
+		rule = postcss.rule({
+			selector: icon.instances.join(', ')
+		});
+
+		rule.append(postcss.decl({
+			prop: 'background-image',
+			value: icon.code
+		}));
+
+		css.append(rule);
+	};
+}
+
+/**
+ * Add icons rules to the end of the styleguide, for all icons
+ * with a media query.
+ *
+ * @param {postcss css object} css
+ * @param {IconCache} iconCache
+ */
+function injectIconRulesWithMedia(css, iconCache) {
+	for (let key in iconCache.cache) {
+		let icon = iconCache.cache[key],
+			atRule,
+			rule;
+
+		if (icon.media === '__NOMEDIA__') { continue; }
+
+		atRule = postcss.atRule({
+			name: 'media',
+			params: icon.media
+		});
+
+		rule = postcss.rule({
+			selector: icon.instances.join(', ')
+		});
+
+		rule.append(postcss.decl({
+			prop: 'background-image',
+			value: icon.code
+		}));
+
+		css.append(atRule);
+		atRule.append(rule);
+	}
+}
+
 // ==== Plugin ============================================
 
 module.exports = postcss.plugin('postcss-svgicon', function(options) {
@@ -113,6 +174,7 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 			icon.media = getMediaRule(decl);
 
 			if (iconCache.has(icon.name, icon.color, icon.media)) { return; }
+
 
 			filepath = `${sourceDir}/${options.prefix}${icon.name}.svg`;
 			xml = fs.readFileSync(filepath, 'utf8').toString();
@@ -161,53 +223,10 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 					parent.remove();
 				}
 			});
+
 		});
 
-		// (1) Add all the rules without media queries to the end of the stylesheet.
-		for (let key in iconCache.cache) {
-			let icon = iconCache.cache[key],
-				rule;
-
-			if (icon.media !== '__NOMEDIA__') { return; }
-
-			rule = postcss.rule({
-				selector: icon.instances.join(', ')
-			});
-
-			rule.append(postcss.decl({
-				prop: 'background-image',
-				value: icon.code
-			}));
-
-			css.append(rule);
-		};
-
-		// (2) Add all the rules without media queries to the end of the stylesheet.
-		// These will appear after rule set (1).
-		for (let key in iconCache.cache) {
-			let icon = iconCache.cache[key],
-				atRule,
-				rule;
-
-			if (icon.media === '__NOMEDIA__') { return; }
-
-			atRule = postcss.atRule({
-				name: 'media',
-				params: icon.media
-			});
-
-			rule = postcss.rule({
-				selector: icon.instances.join(', ')
-			});
-
-			rule.append(postcss.decl({
-				prop: 'background-image',
-				value: icon.code
-			}));
-
-			css.append(atRule);
-			atRule.append(rule);
-		}
+		injectIconRulesWithoutMedia(css, iconCache);
+		injectIconRulesWithMedia(css, iconCache);
 	};
-
 });
