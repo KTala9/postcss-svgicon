@@ -183,18 +183,22 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 				let newSvg,
 					newProperty;
 
-				traverse(parsedData).forEach(function (value) {
-					if (CONFIG.PATH_TYPES.indexOf(this.key) !== -1) {
-						let newValue = value,
-							len = newValue.length;
+				// If a color has been provided, color the fill.
+				// If not, just pass the default colors.
+				if (typeof icon.color === 'string') {
+					traverse(parsedData).forEach(function (value) {
+						if (CONFIG.PATH_TYPES.indexOf(this.key) !== -1) {
+							let newValue = value,
+								len = newValue.length;
 
-						for (let i = 0; i < len; i++) {
-							newValue[i]['$'].fill = icon.color;
+							for (let i = 0; i < len; i++) {
+								newValue[i]['$'].fill = icon.color;
+							}
+
+							this.update(newValue);
 						}
-
-						this.update(newValue);
-					}
-				});
+					});
+				}
 
 				// Convert js back to svg
 				newSvg = js2xml.buildObject(parsedData);
