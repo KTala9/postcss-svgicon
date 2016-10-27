@@ -1,6 +1,6 @@
 {
   "name": "postcss-svgicon",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A Postcss plugin which makes it easy to use svgs as background images and icons, while coloring them using css.",
   "main": "index.js",
   "repository": "https://github.com/KTala9/postcss-svgicon",
