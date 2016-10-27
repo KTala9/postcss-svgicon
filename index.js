@@ -21,8 +21,7 @@ const path = require('path'),
 	DEFAULT_OPTIONS = {
 		path: './svgs',
 		prefix: '',
-		functionName: 'svgicon',
-		stripStyles: false
+		functionName: 'svgicon'
 	},
 
 	CONFIG = {
@@ -208,8 +207,8 @@ module.exports = postcss.plugin('postcss-svgicon', function(options) {
 				newSvg = pd.xmlmin(newSvg);
 				newSvg = removeNewline(newSvg);
 
-				if (options.stripStyles) {
-					// Remove style tage in svg code.
+				if (typeof icon.color === 'string') {
+					// Remove style tage in svg code, if we're colouring it
 					newSvg = newSvg.replace(/\<style.*style\>/, '');
 				}
 
